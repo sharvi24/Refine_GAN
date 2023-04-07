@@ -123,22 +123,20 @@ def plt_sample_pulse(duration, value):
 
 def create_speech_template(intensity_per_time, time_periods, duration_in_milisec):
     all_pulse = list()
-    for i in range(len(intensity_per_time)):
+    # Generate an array of time values from 0 to 
+    duration_in_sec = duration_in_milisec / 1000
+   
+    for i in range(intensity_per_time.shape[0]):
         # Set the time period and duration of the pulse
         time_period = time_periods[i]  # seconds
         amplitude = intensity_per_time[i]
-        pulse_duration = time_period  # seconds
-
-        # Generate an array of time values from 0 to 
-        duration_in_sec = duration_in_milisec / 1000
-        t = np.arange(0, time_period, time_period/(duration_in_sec * 44100)/len(intensity_per_time))
-
-        # Generate the sine pulse
-        frequency = 1.0 / time_period
-        omega = 2 * np.pi * frequency
-        phase = np.pi / 2  # phase shift to start at maximum
-        pulse = amplitude * np.sin(omega * t + phase)
-        pulse[t > pulse_duration] = 0  # set pulse to zero after duration
+        t = np.arange(
+            0,
+            time_period, 
+            time_period/((duration_in_sec * 44100)/intensity_per_time.shape[0])
+        )
+        pulse = amplitude * np.sin(2 * np.pi * (1.0 / time_period) * t + np.pi / 2)
+        pulse[t > time_period] = 0  # set pulse to zero after duration
         all_pulse.extend(list(pulse))
     return np.array(all_pulse)
 

@@ -46,27 +46,6 @@ class ResBlock1(torch.nn.Module):
             nn.utils.remove_weight_norm(l)
 
 
-# class ResBlock2(torch.nn.Module):
-#     def __init__(self, channels, kernel_size=3):
-#         super(ResBlock2, self).__init__()
-#         self.convs = nn.ModuleList([
-#             nn.utils.weight_norm(
-#                 nn.Conv1d(channels, channels, kernel_size, 1)),
-#             nn.utils.weight_norm(nn.Conv1d(channels, channels, kernel_size, 1))
-#         ])
-
-#     def forward(self, x):
-#         for c in self.convs:
-#             xt = F.leaky_relu(x, 0.1)
-#             xt = c(xt)
-#             x = xt + x
-#         return x
-
-#     def remove_weight_norm(self):
-#         for l in self.convs:
-#             nn.utils.remove_weight_norm(l)
-
-
 class Generator(torch.nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
@@ -93,8 +72,12 @@ class Generator(torch.nn.Module):
         self.conv_post = nn.utils.weight_norm(
             nn.Conv1d(ch, 1, 7, 1, padding=3))
 
-    def forward(self, x):
-        x = self.conv_pre(x)
+    def forward(self, mel, speech_temp):
+        x = self.conv_pre(mel) # ready for concat
+        # some call = self.blah(speech_temp)
+        # c = concat(some_call, x)
+        # self.dense(c)
+        # 
         for i in range(self.num_upsamples):
             x = F.leaky_relu(x, 0.1)
             x = self.ups[i](x)
