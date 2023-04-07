@@ -6,25 +6,18 @@ import torchaudio
 
 
 def read_audio(wav_path):
-    wav, fs = torchaudio.load(wav_path, normalize=True)
-    print("og wav", wav.shape)
-
-    wav = torchaudio.functional.resample(wav, orig_freq=fs, new_freq=44100)
-    print("new wav", wav.shape)
+    info = torchaudio.info(wav_path)
+    duration_in_milisec = (info.num_frames / info.sample_rate) * 1000
+    
+    wav, sr = torchaudio.load(wav_path, normalize=True)
+    # print("og wav", wav.shape)
+    wav = torchaudio.functional.resample(wav, orig_freq=sr, new_freq=44100)
+    # print("new wav", wav.shape[0])
+    
+    ## Dealing with stereo audios
     if wav.shape[0] == 2:
         wav = wav[:, 0]
-    return wav, 44100
-
-
-def compute_speech_properties(wav_path):
-    wav, fs = read_audio(wav_path)
-    print("sample rate", fs)
-    wav = wav.numpy()[0]
-    wav = np.ascontiguousarray(wav.astype('float64'))
-    f0, timeaxis = pw.dio(wav, fs, frame_period=3000/1032)
-    f01 = pw.stonemask(wav.astype('float64'), f0, timeaxis, fs)
-    return [f0, f01, timeaxis]
-
+    return wav, 44100, duration_in_milisec
 
 def compute_energy(wav):
     hop_length = 100
@@ -34,7 +27,6 @@ def compute_energy(wav):
                       for i in range(0, wav.shape[0], hop_length)] * hop_length
         )
     return energy
-
 
 def add_noise_to_non_voices(wav, sample_rate):
     energy = compute_energy(wav)
@@ -68,11 +60,9 @@ def add_noise_to_non_voices(wav, sample_rate):
 
     return noisy_wav
 
-
 def plot_and_calculate_spectogram(wav_path):
-    waveform, sample_rate = read_audio(wav_path)
+    waveform, sample_rate, duration_in_milisec = read_audio(wav_path)
     waveform = waveform.numpy()
-
     num_channels, num_frames = waveform.shape
 
     time_axis = torch.arange(0, num_frames) / sample_rate
@@ -87,11 +77,25 @@ def plot_and_calculate_spectogram(wav_path):
     plt.show(block=False)
     return my_melspec, freqs, t
 
-
 # 1/ mean intensity of spec across time
 def get_mean_intensity_time(t):
     return np.mean(t, 0)
 
+def compute_speech_properties(wav_path, timestamps_count):
+    wav, sr, duration_in_milisec = read_audio(wav_path)
+    
+    wav = wav.numpy()[0]
+    wav = np.ascontiguousarray(wav.astype('float64'))
+    f0, timeaxis = pw.dio(wav, sr, frame_period=3000/1032)
+    
+    print("comparison",duration_in_milisec/timestamps_count, 3000/1032)
+    # wav = wav.numpy()
+    # wav = np.ascontiguousarray(wav.astype('float64'))
+    # print("shape of wav for pw", wav.shape)
+    
+    #f0, timeaxis = pw.dio(wav, sr, frame_period = duration_in_milisec/timestamps_count)
+    f01 = pw.stonemask(wav, f0, timeaxis, sr)
+    return [f0, f01, timeaxis]
 
 def smoothen_pitch(raw_pitch):
     res = np.zeros(raw_pitch.shape)
@@ -99,9 +103,6 @@ def smoothen_pitch(raw_pitch):
         res[i] = raw_pitch[i] + np.mean(raw_pitch)
     return res
 
-
-# duration = time_periods[0]
-# value = intensity_t[0]
 def plt_sample_pulse(duration, value):
     # Set the time period and duration of the pulse
     time_period = duration  # seconds
@@ -125,8 +126,7 @@ def plt_sample_pulse(duration, value):
     plt.title('Sine Pulse with Time Period of 1 Second')
     plt.show()
 
-
-def create_speech_template(intensity_per_time, time_periods):
+def create_speech_template(intensity_per_time, time_periods, duration_in_milisec):
     all_pulse = list()
     for i in range(len(intensity_per_time)):
         # Set the time period and duration of the pulse
@@ -134,8 +134,9 @@ def create_speech_template(intensity_per_time, time_periods):
         amplitude = intensity_per_time[i]
         pulse_duration = time_period  # seconds
 
-        # Generate an array of time values from 0 to 1 second with a step size of 0.001 seconds
-        t = np.arange(0, time_period, time_period/(132300/1032))
+        # Generate an array of time values from 0 to 
+        duration_in_sec = duration_in_milisec / 1000
+        t = np.arange(0, time_period, time_period/(duration_in_sec * 44100)/len(intensity_per_time))
 
         # Generate the sine pulse
         frequency = 1.0 / time_period
@@ -146,33 +147,20 @@ def create_speech_template(intensity_per_time, time_periods):
         all_pulse.extend(list(pulse))
     return np.array(all_pulse)
 
-
-def main():
-    wav, sample_rate = read_audio(wav_path='../sample.wav')
-    raw_p, ref_p, timeaxis = compute_speech_properties("../sample.wav")
-    print(raw_p.shape, ref_p.shape, timeaxis.shape)
+def get_speech_template(wav_path):
+    # if the sampling frequency is 44100 hertz, a recording with a duration of 60 seconds will contain 2,646,000 samples.
+    # therefore required number of samples for 3 sec audio = 44100*3 = 132300 samples
+    
+    wav, sample_rate, duration_in_milisec = read_audio(wav_path)
+    
     noisy_wav = add_noise_to_non_voices(wav[0], sample_rate)
-    my_melspec, freqs, t = plot_and_calculate_spectogram("../sample.wav")
-    new_raw_p = smoothen_pitch(raw_p)
-
-    time_periods = 1 / new_raw_p
-    time_periods
-
+    
+    my_melspec, freqs, t = plot_and_calculate_spectogram(wav_path)
+    
     intensity_per_time = get_mean_intensity_time(my_melspec)
-    all_pulse = create_speech_template(intensity_per_time, time_periods)
-
-    """if the sampling frequency is 44100 hertz, a recording with a duration of 60 seconds will contain 2,646,000 samples.
-
-    therefore required number of samples for 3 sec audio = 44100*3 = 132300 samples
-    """
-
-    # frame period = len(all_pulse) / 1032
-    # sampling frequency = 44100
-
-    # plt.plot(all_pulse)
-    print(all_pulse)
-    np.save('../all_pulse.npy', all_pulse)
-
-
-if __name__ == '__main__':
-    main()
+    
+    raw_p, ref_p, timeaxis = compute_speech_properties(wav_path, timestamps_count = t)
+    new_raw_p = smoothen_pitch(raw_p)
+    time_periods = 1 / new_raw_p
+    pulse_list = create_speech_template(intensity_per_time, time_periods, duration_in_milisec)
+    return pulse_list
