@@ -28,7 +28,8 @@ def compute_energy(wav):
         )
     return energy
 
-def add_noise_to_non_voices(wav, sample_rate):
+
+def add_noise_to_non_voices(wav, sample_rate, noisy_path='noisy_audio_file.wav'):
     energy = compute_energy(wav)
     
     zeros_idxs_audio = []
@@ -56,9 +57,10 @@ def add_noise_to_non_voices(wav, sample_rate):
 
     noisy_wav = torch.from_numpy(np.array(noisy_wav, dtype='float32'))
     noisy_wav = torch.unsqueeze(noisy_wav, 0)
-    torchaudio.save('noisy_audio_file.wav', noisy_wav, sample_rate)
+    torchaudio.save(noisy_path, noisy_wav, sample_rate)
 
     return noisy_wav
+
 
 def plot_and_calculate_spectogram(wav_path):
     waveform, sample_rate, duration_in_milisec = read_audio(wav_path)
@@ -77,9 +79,11 @@ def plot_and_calculate_spectogram(wav_path):
     plt.show(block=False)
     return my_melspec, freqs, t
 
+
 # 1/ mean intensity of spec across time
 def get_mean_intensity_time(t):
     return np.mean(t, 0)
+
 
 def compute_speech_properties(wav_path, timestamps_count):
     wav, sr, duration_in_milisec = read_audio(wav_path)
@@ -92,11 +96,13 @@ def compute_speech_properties(wav_path, timestamps_count):
     f01 = pw.stonemask(wav, f0, timeaxis, sr)
     return [f0, f01, timeaxis]
 
+
 def smoothen_pitch(raw_pitch):
     res = np.zeros(raw_pitch.shape)
     for i in range(res.shape[0]):
         res[i] = raw_pitch[i] + np.mean(raw_pitch)
     return res
+
 
 def plt_sample_pulse(duration, value):
     # Set the time period and duration of the pulse
@@ -121,6 +127,7 @@ def plt_sample_pulse(duration, value):
     plt.title('Sine Pulse with Time Period of 1 Second')
     plt.show()
 
+
 def create_speech_template(intensity_per_time, time_periods, duration_in_milisec):
     all_pulse = list()
     # Generate an array of time values from 0 to 
@@ -140,19 +147,21 @@ def create_speech_template(intensity_per_time, time_periods, duration_in_milisec
         all_pulse.extend(list(pulse))
     return np.array(all_pulse)
 
+
 def get_speech_template(wav_path):
     # if the sampling frequency is 44100 hertz, a recording with a duration of 60 seconds will contain 2,646,000 samples.
     # therefore required number of samples for 3 sec audio = 44100*3 = 132300 samples
     
     wav, sample_rate, duration_in_milisec = read_audio(wav_path)
     
-    noisy_wav = add_noise_to_non_voices(wav[0], sample_rate)
+    noisy_path = 'noisy_audio_file.wav'
+    noisy_wav = add_noise_to_non_voices(wav[0], sample_rate, noisy_path)
     
-    my_melspec, freqs, t = plot_and_calculate_spectogram(wav_path)
+    my_melspec, freqs, t = plot_and_calculate_spectogram(noisy_path)
     
     intensity_per_time = get_mean_intensity_time(my_melspec)
     
-    raw_p, ref_p, timeaxis = compute_speech_properties(wav_path, timestamps_count = t.shape[0])
+    raw_p, ref_p, timeaxis = compute_speech_properties(noisy_path, timestamps_count = t.shape[0])
     new_raw_p = smoothen_pitch(raw_p)
     time_periods = 1 / new_raw_p
     pulse_list = create_speech_template(intensity_per_time, time_periods, duration_in_milisec)

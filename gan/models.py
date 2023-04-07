@@ -15,19 +15,19 @@ class ResBlock1(torch.nn.Module):
         super(ResBlock1, self).__init__()
         self.convs1 = nn.ModuleList([
             nn.utils.weight_norm(
-                nn.Conv1d(channels, channels, kernel_size, 1)),
+                nn.Conv1d(channels, channels, kernel_size, 1, padding='same')),
             nn.utils.weight_norm(
-                nn.Conv1d(channels, channels, kernel_size, 1)),
+                nn.Conv1d(channels, channels, kernel_size, 1, padding='same')),
             nn.utils.weight_norm(
-                nn.Conv1d(channels, channels, kernel_size, 1,))
+                nn.Conv1d(channels, channels, kernel_size, 1, padding='same'))
         ])
 
         self.convs2 = nn.ModuleList([
             nn.utils.weight_norm(
-                nn.Conv1d(channels, channels, kernel_size, 1)),
+                nn.Conv1d(channels, channels, kernel_size, 1, padding='same')),
             nn.utils.weight_norm(
-                nn.Conv1d(channels, channels, kernel_size, 1)),
-            nn.utils.weight_norm(nn.Conv1d(channels, channels, kernel_size, 1))
+                nn.Conv1d(channels, channels, kernel_size, 1, padding='same')),
+            nn.utils.weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, padding='same'))
         ])
 
     def forward(self, x):
@@ -45,7 +45,16 @@ class ResBlock1(torch.nn.Module):
         for l in self.convs2:
             nn.utils.remove_weight_norm(l)
 
+class DownsampleBlock(torch.nn.Module):
+    def __init__(self) -> None:
+        super(DownsampleBlock, self).__init__()
+        self.resblock = ResBlock1(channels=512, kernel_size=3)
 
+    def forward(self, x):
+        x = F.leaky_relu(x, 0.1)
+        x = self.resblock(x)
+        return x
+        
 class Generator(torch.nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
@@ -53,6 +62,11 @@ class Generator(torch.nn.Module):
         self.num_upsamples = len(upsample_rates)
         self.conv_pre = nn.utils.weight_norm(
             nn.Conv1d(129, upsample_initial_channel, 7, 1, padding=3))
+        self.conv_pre_speech = nn.utils.weight_norm(
+            nn.Conv1d(1, upsample_initial_channel, 7, 1, padding=3))
+        self.downsample_block_1 = DownsampleBlock()
+        self.downsample_block_2 = DownsampleBlock()
+        
         resblock = ResBlock1  # if resblock == '1' else ResBlock2
 
         self.ups = nn.ModuleList()
@@ -74,14 +88,14 @@ class Generator(torch.nn.Module):
 
     def forward(self, mel, speech_temp):
         x = self.conv_pre(mel) # ready for concat
-        # some call = self.blah(speech_temp)
-        # c = concat(some_call, x)
-        # self.dense(c)
-        # 
+        speech = self.conv_pre_speech(speech_temp)
+        speech = self.downsample_block_1(speech)
+        speech = self.downsample_block_2(speech)
+        concat_input = torch.cat([speech, x], dim=1)
+
         for i in range(self.num_upsamples):
-            x = F.leaky_relu(x, 0.1)
+            x = F.leaky_relu(concat_input, 0.1)
             x = self.ups[i](x)
-            print('inside gen:', x.shape)
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
@@ -92,11 +106,9 @@ class Generator(torch.nn.Module):
         x = F.leaky_relu(x)
         x = self.conv_post(x)
         x = torch.tanh(x)
-
         return x
 
     def remove_weight_norm(self):
-        print('Removing weight norm...')
         for l in self.ups:
             nn.utils.remove_weight_norm(l)
         for l in self.resblocks:
