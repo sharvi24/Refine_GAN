@@ -17,7 +17,7 @@ def read_audio(wav_path):
     ## Dealing with stereo audios
     if wav.shape[0] == 2:
         wav = wav[:, 0]
-    return wav, 44100, duration_in_milisec
+    return wav, 44100, int(duration_in_milisec)
 
 def compute_energy(wav):
     hop_length = 100
@@ -86,14 +86,9 @@ def compute_speech_properties(wav_path, timestamps_count):
     
     wav = wav.numpy()[0]
     wav = np.ascontiguousarray(wav.astype('float64'))
-    f0, timeaxis = pw.dio(wav, sr, frame_period=3000/1032)
-    
-    print("comparison",duration_in_milisec/timestamps_count, 3000/1032)
-    # wav = wav.numpy()
-    # wav = np.ascontiguousarray(wav.astype('float64'))
-    # print("shape of wav for pw", wav.shape)
-    
-    #f0, timeaxis = pw.dio(wav, sr, frame_period = duration_in_milisec/timestamps_count)
+    f0, timeaxis = pw.dio(wav, sr, frame_period = duration_in_milisec/timestamps_count)
+    #f0, timeaxis = pw.dio(wav, sr, frame_period=3000/1032)
+
     f01 = pw.stonemask(wav, f0, timeaxis, sr)
     return [f0, f01, timeaxis]
 
@@ -159,7 +154,7 @@ def get_speech_template(wav_path):
     
     intensity_per_time = get_mean_intensity_time(my_melspec)
     
-    raw_p, ref_p, timeaxis = compute_speech_properties(wav_path, timestamps_count = t)
+    raw_p, ref_p, timeaxis = compute_speech_properties(wav_path, timestamps_count = t.shape[0])
     new_raw_p = smoothen_pitch(raw_p)
     time_periods = 1 / new_raw_p
     pulse_list = create_speech_template(intensity_per_time, time_periods, duration_in_milisec)
